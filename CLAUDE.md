@@ -114,6 +114,8 @@ The schema carries a semantic version in its `$id` field (e.g. `claude-dev-diges
 
 Implementation plans live in `ai-docs/plans/` and are prefixed with a 3-digit zero-padded sequential number, e.g. `001-schema-v1-update.md`, `002-foo.md`. Increment from the highest existing number when adding a new plan.
 
+All plans should have a frontmatter with only one required field: `status`, status could be `proposed` or `implemented`, use this to check the current state of our backlog
+
 ## The Bash hook
 
 `validate_bash.py` is a `PreToolUse` hook that returns `permissionDecision: "ask"` for any `python3` invocation other than the bundled `generate.py`, so unexpected scripts force an explicit user prompt instead of being silently auto-approved or hard-rejected. `allowed-tools: Bash(python3 *)` in `SKILL.md` is intentionally broad — the hook is where the bundled-vs-unknown decision is made. Don't try to tighten `allowed-tools` to a path-specific matcher; glob matching does not expand `${CLAUDE_PLUGIN_ROOT}` and baking an absolute path breaks portability.
