@@ -11,7 +11,7 @@ from .jira import extract_jira_ids
 from .utils import (
     git_root_for_cwd,
     parse_iso,
-    repo_name,
+    repo_full,
     repo_short,
     shorten,
     text_from_content,
@@ -387,7 +387,7 @@ def parse_session_file(
         "sessionId": path.stem,
         "filePath": str(path),
         "cwd": cwd,
-        "repo": repo_name(cwd),
+        "repo": repo_full(cwd),
         "repoShort": repo_short(cwd),
         "gitBranch": git_branch,
         "firstPrompt": first_prompt,

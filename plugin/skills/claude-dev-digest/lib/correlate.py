@@ -30,7 +30,7 @@ def _precompute_pr(p: dict) -> dict:
     """Build the per-PR cache of derived values used by the inner loop."""
     files_full = set(p.get("files") or [])
     return {
-        "repoLc": p["repoShort"].lower(),
+        "repoLc": p["repo"].lower(),
         "headLc": (p.get("head") or "").lower(),
         "filesFull": files_full,
         "filesBase": {os.path.basename(f) for f in files_full},

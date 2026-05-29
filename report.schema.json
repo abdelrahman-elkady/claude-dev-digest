@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "claude-dev-digest/report/v2.0.0",
+  "$id": "claude-dev-digest/report/v3.0.0",
   "title": "Claude Dev Digest",
   "description": "Output schema for the claude-dev-digest plugin. All timestamps are UTC ISO 8601. See REPORT_SCHEMA.md for usage notes and consumer guidance.",
   "type": "object",
@@ -153,12 +153,12 @@
         "sessionsByRepo": {
           "type": "object",
           "additionalProperties": { "type": "integer" },
-          "description": "Session count per repoShort"
+          "description": "Session count per owner/repo"
         },
         "prsByRepo": {
           "type": "object",
           "additionalProperties": { "type": "integer" },
-          "description": "Authored PR count per repoShort"
+          "description": "Authored PR count per owner/repo"
         },
         "uncorrelatedSessions": {
           "type": "integer",
@@ -167,7 +167,7 @@
         "minutesByRepo": {
           "type": "object",
           "additionalProperties": { "type": "number" },
-          "description": "Total minutes per repoShort, sorted desc"
+          "description": "Total minutes per owner/repo, sorted desc"
         },
         "categoryMinutes": {
           "type": "object",
@@ -177,7 +177,7 @@
         "activeMinutesByRepo": {
           "type": "object",
           "additionalProperties": { "type": "number" },
-          "description": "Total active minutes per repoShort (wall-clock minus idle gaps), sorted desc"
+          "description": "Total active minutes per owner/repo (wall-clock minus idle gaps), sorted desc"
         },
         "activeCategoryMinutes": {
           "type": "object",
@@ -187,7 +187,7 @@
         "idleMinutesByRepo": {
           "type": "object",
           "additionalProperties": { "type": "number" },
-          "description": "Total idle minutes per repoShort (sum of over-cap user_pause excess), sorted desc"
+          "description": "Total idle minutes per owner/repo (sum of over-cap user_pause excess), sorted desc"
         },
         "idleCategoryMinutes": {
           "type": "object",
@@ -244,7 +244,7 @@
       "properties": {
         "repo": {
           "type": "string",
-          "description": "repoShort"
+          "description": "Full owner/repo"
         },
         "number": {
           "type": "integer"
@@ -317,11 +317,11 @@
         },
         "repo": {
           "type": "string",
-          "description": "Full owner/repo from git remote"
+          "description": "Full owner/repo from git remote (e.g. myorg/app), or local:<segment> when no remote is reachable."
         },
         "repoShort": {
           "type": "string",
-          "description": "Repo name only (no owner)"
+          "description": "Bare repo name with no owner (e.g. app), or local:<segment> when no remote is reachable."
         },
         "gitBranch": {
           "type": "string",
