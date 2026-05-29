@@ -14,6 +14,10 @@ from pathlib import Path
 _XML_WRAPPER_RE = re.compile(r"<([a-zA-Z][\w-]*)\b[^>]*>.*?</\1>", re.DOTALL)
 _BARE_TAG_RE = re.compile(r"<[^>]+>")
 
+# Parses `owner/repo` out of a git remote URL (ssh or https, with/without .git).
+# Group 1 is the owner, group 2 is the repo.
+_REMOTE_URL_RE = re.compile(r"[:/]([^/:]+)/([^/]+?)(?:\.git)?/?$")
+
 
 def parse_iso(s: str | None) -> datetime | None:
     """Parse an ISO-8601 string to a tz-aware datetime, or None on failure."""
@@ -48,39 +52,13 @@ def text_from_content(content) -> str:
     return ""
 
 
-def repo_short(cwd: str) -> str:
-    """Derive a short, human-readable repo label from a cwd path.
-
-    Strips the user's home directory prefix so the result is portable across
-    machines, then takes the trailing one or two segments. Used as a display
-    fallback; the authoritative repo identity comes from `repo_name`.
-    """
-    if not cwd:
-        return "unknown"
-    try:
-        rel = Path(cwd).resolve().relative_to(Path.home().resolve())
-        parts = list(rel.parts)
-    except (ValueError, OSError):
-        parts = [p for p in cwd.strip("/").split("/") if p]
-    if not parts:
-        return cwd
-    cleaned = []
-    for p in parts:
-        if p.startswith(".claude") or p == "worktrees" or p.startswith("agent-"):
-            break
-        cleaned.append(p)
-    if len(cleaned) >= 2:
-        return "/".join(cleaned[-2:])
-    if cleaned:
-        return cleaned[-1]
-    return parts[-1]
-
-
-# Per-cwd → git root cache. Shared by repo_name and repo_relative_path so neither
-# walks the directory tree more than once per cwd. Sentinel `False` means "looked
-# but no .git found"; absence of key means "not yet looked".
+# Per-cwd caches so repeated lookups never re-walk the tree or re-shell-out.
+# `_GIT_ROOT_CACHE` stores the enclosing .git root (None when there is none);
+# `_REMOTE_CACHE` stores the parsed remote (None when unreachable), shared by
+# repo_full and repo_short so the `git config` subprocess runs at most once per
+# cwd. Absence of a key means "not yet looked".
 _GIT_ROOT_CACHE: dict[str, Path | None] = {}
-_REPO_CACHE: dict[str, str] = {}
+_REMOTE_CACHE: dict[str, tuple[str, str] | None] = {}
 
 
 def git_root_for_cwd(cwd: str) -> Path | None:
@@ -100,50 +78,80 @@ def git_root_for_cwd(cwd: str) -> Path | None:
     return root
 
 
-def repo_name(cwd: str) -> str:
-    """Resolve a cwd to its GitHub repo name (e.g. 'node-app').
+def _remote_owner_repo(cwd: str) -> tuple[str, str] | None:
+    """Parse (owner, repo) from the enclosing git root's remote.origin.url.
 
-    Uses `git_root_for_cwd` to find the repo, then reads `remote.origin.url` and
-    parses out `owner/repo`. Falls back to the deepest non-worktree path segment.
-    Cached per cwd.
+    Uses `git_root_for_cwd` to find the root, then runs
+    `git -C <root> config --get remote.origin.url` and matches it against
+    `_REMOTE_URL_RE`. Returns None when there is no git root, the git call
+    fails, or the URL doesn't match. Cached per cwd so the subprocess runs at
+    most once per cwd (both `repo_full` and `repo_short` resolve through here).
     """
-    if not cwd:
-        return ""
-    if cwd in _REPO_CACHE:
-        return _REPO_CACHE[cwd]
-
+    if cwd in _REMOTE_CACHE:
+        return _REMOTE_CACHE[cwd]
+    result: tuple[str, str] | None = None
     git_root = git_root_for_cwd(cwd)
-    name = ""
-    if git_root:
+    if git_root is not None:
         try:
             url = subprocess.check_output(
                 ["git", "-C", str(git_root), "config", "--get", "remote.origin.url"],
                 text=True,
                 stderr=subprocess.DEVNULL,
             ).strip()
-            m = re.search(r"[:/]([^/:]+)/([^/]+?)(?:\.git)?/?$", url)
+            m = _REMOTE_URL_RE.search(url)
             if m:
-                name = m.group(2)
+                result = (m.group(1), m.group(2))
         except (subprocess.CalledProcessError, FileNotFoundError):
-            pass
-        if not name:
-            name = git_root.name
+            result = None
+    _REMOTE_CACHE[cwd] = result
+    return result
 
-    if not name:
-        parts = [p for p in cwd.strip("/").split("/") if p]
-        cleaned = []
-        for seg in parts:
-            if (
-                seg.startswith(".claude")
-                or seg == "worktrees"
-                or seg.startswith("agent-")
-            ):
-                break
-            cleaned.append(seg)
-        name = cleaned[-1] if cleaned else (parts[-1] if parts else "")
 
-    _REPO_CACHE[cwd] = name
-    return name
+def _local_fallback(cwd: str) -> str:
+    """Return a `local:` label for a cwd with no reachable remote.
+
+    If a git root exists above `cwd`, use its directory name (depth-independent).
+    Otherwise fall back to the last non-empty path segment of `cwd`, or
+    `local:unknown` when `cwd` has no segments. Both `repo_full` and `repo_short`
+    call this so they agree on the label for a given cwd.
+    """
+    git_root = git_root_for_cwd(cwd)
+    if git_root is not None:
+        return "local:" + git_root.name
+    parts = [p for p in cwd.strip("/").split("/") if p]
+    if parts:
+        return "local:" + parts[-1]
+    return "local:unknown"
+
+
+def repo_full(cwd: str) -> str:
+    """Resolve a cwd to its full `owner/repo` GitHub identity.
+
+    Reads `remote.origin.url` from the enclosing git root and returns
+    `owner/repo`. Falls back to a `local:` label when no remote is reachable.
+    The expensive parse is cached in `_remote_owner_repo`.
+    """
+    if not cwd:
+        return ""
+    owner_repo = _remote_owner_repo(cwd)
+    if owner_repo:
+        return f"{owner_repo[0]}/{owner_repo[1]}"
+    return _local_fallback(cwd)
+
+
+def repo_short(cwd: str) -> str:
+    """Resolve a cwd to its bare repo name (e.g. 'node-app').
+
+    Reads `remote.origin.url` from the enclosing git root and returns the repo
+    name. Falls back to a `local:` label when no remote is reachable. The
+    expensive parse is cached in `_remote_owner_repo`.
+    """
+    if not cwd:
+        return ""
+    owner_repo = _remote_owner_repo(cwd)
+    if owner_repo:
+        return owner_repo[1]
+    return _local_fallback(cwd)
 
 
 def repo_relative_path(full_path: str, cwd: str) -> str:

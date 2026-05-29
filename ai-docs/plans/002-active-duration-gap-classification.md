@@ -1,3 +1,6 @@
+status: implemented
+---
+
 # Active duration via gap classification
 
 ## Context

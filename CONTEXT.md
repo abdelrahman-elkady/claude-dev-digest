@@ -27,7 +27,7 @@ If a path looks machine-specific, a default looks user-specific, a SKILL.md samp
    ~/.claude/projects/**/*.jsonl   git remote   gh search prs (author + reviewed-by)
             │                          │                 │
             ▼                          ▼                 ▼
-       lib/scanner.py  ──── lib/utils.repo_name ──── lib/github.py
+       lib/scanner.py  ──── lib/utils.repo_full ──── lib/github.py
             │                                              │
             │                                              ▼
             │                                       gh api .../pulls/N (concurrent + cache)
@@ -48,7 +48,7 @@ If a path looks machine-specific, a default looks user-specific, a SKILL.md samp
       lib/report.write_json   .write_markdown
 ```
 
-The join key is **`session.repo == pr.repoShort`** (case-insensitive). Everything else is a confidence signal layered on top.
+The join key is **`session.repo == pr.repo`** (case-insensitive). Everything else is a confidence signal layered on top.
 
 ## Module map
 
@@ -66,7 +66,7 @@ claude-dev-digest/                       (repo root — dev files stay here)
         ├── generate.py                ← thin CLI orchestrator (argparse, run order, --rerender)
         ├── validate_bash.py           ← Bash PreToolUse hook (resolves generate.py from __file__)
         └── lib/
-            ├── utils.py               ← parse_iso, repo_name (authoritative, cached), repo_relative_path, shorten
+            ├── utils.py               ← parse_iso, repo_full (authoritative, cached), repo_short, repo_relative_path, shorten
             ├── jira.py                ← JIRA_RE = \b([A-Z][A-Z0-9]{1,9}-\d+)\b, extract_jira_ids
             ├── scanner.py             ← parse_session_file, scan_sessions; skips subagents/, isSidechain, SKIP_TYPES
             ├── categorize.py          ← keyword + tool-usage rules → CATEGORIES string
@@ -83,9 +83,20 @@ Default output dir: `~/claude-dev-digest/`. Contains `report.{json,md}` (regener
 
 ### 1. Repo identity comes from `git remote`, not the directory name
 
-`lib/utils.repo_name` walks up from the session's `cwd` to find `.git`, reads `remote.origin.url`, parses `owner/repo`, caches per cwd. Path-segment tricks break on monorepos like `~/code/myorg/platform-mono/services/api` where the parent dir name (`platform-mono`) doesn't match the GitHub repo (`api`).
+Two helpers own repo identity, both walking up from the session's `cwd` to find `.git`, reading `remote.origin.url`, and caching per cwd:
 
-⚠️ **Never bypass `repo_name`.** If you need a repo identifier, call `lib.utils.repo_name(cwd)`. If you ever change this function, verify against a monorepo path where the parent dir differs from the GitHub repo.
+- `lib/utils.repo_full(cwd)` returns the canonical **`owner/repo`** string.
+- `lib/utils.repo_short(cwd)` returns the **bare repo name** (no owner).
+
+Path-segment tricks break on monorepos like `~/code/myorg/platform-mono/services/api` where the parent dir name (`platform-mono`) doesn't match the GitHub repo (`api`).
+
+Both helpers fall back gracefully when there's no remote to parse:
+- `local:<git-root-name>` when a git root exists but has no `remote.origin.url`.
+- `local:<last-cwd-segment>` when there is no git root at all.
+
+Both sides of the report now share the same shape: each `session` and each `pr` carries `repo` = `owner/repo` and `repoShort` = the bare name. That symmetry is what lets the join key be `session.repo == pr.repo` (case-insensitive).
+
+⚠️ **Never bypass these helpers.** If you need an `owner/repo` identifier, call `lib.utils.repo_full(cwd)`; for the bare name call `lib.utils.repo_short(cwd)`. If you ever change either function, verify against a monorepo path where the parent dir differs from the GitHub repo, and against both fallback cases (git root with no remote, and no git root at all).
 
 ### 2. Correlation is a confidence score, not a boolean
 
@@ -194,7 +205,7 @@ print('OK', d['totals'])
 "
 ```
 
-Failure triage: sessions == 0 → check `repo_name` resolution. PRs == 0 unexpectedly → check `gh auth status` and the date window. Both populated but correlation == 0 → the `repo == repoShort` join is failing; log both sides.
+Failure triage: sessions == 0 → check `repo_full` resolution. PRs == 0 unexpectedly → check `gh auth status` and the date window. Both populated but correlation == 0 → the `repo == repo` join is failing; log both sides.
 
 ## Glossary
 

@@ -1,3 +1,6 @@
+status: implemented
+---
+
 # 001 — Agent-reviewable category flag on sessions
 
 ## Context

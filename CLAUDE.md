@@ -73,7 +73,7 @@ claude plugin install claude-dev-digest@claude-dev-digest
 
 ## Architecture
 
-`generate.py` is a thin CLI orchestrator that imports only from `lib/` — no business logic. Data flows one direction: scan → fetch/enrich → categorize → correlate → build report → write artifacts. The join key is `session.repo == pr.repoShort` (case-insensitive); everything else (branch, files, jira, time) is a confidence signal layered on that join.
+`generate.py` is a thin CLI orchestrator that imports only from `lib/` — no business logic. Data flows one direction: scan → fetch/enrich → categorize → correlate → build report → write artifacts. The join key is `session.repo == pr.repo` (case-insensitive); everything else (branch, files, jira, time) is a confidence signal layered on that join.
 
 Module boundaries (see [CONTEXT.md](CONTEXT.md) for the full map). All paths are relative to `plugin/skills/claude-dev-digest/`:
 - `lib/scanner.py` — parses `~/.claude/projects/**/*.jsonl`, skips subagents and sidechains
@@ -81,7 +81,7 @@ Module boundaries (see [CONTEXT.md](CONTEXT.md) for the full map). All paths are
 - `lib/correlate.py` — additive scoring with hard rules (< 2 dropped, > 2h post-merge rejected)
 - `lib/categorize.py` — keyword + tool-usage rules returning one of 12 fixed category strings
 - `lib/report.py` — `build_report`, `recompute_totals` (shared with `--rerender`), `write_json` / `write_markdown`
-- `lib/utils.py` — `repo_name` is **authoritative** for repo identity; always use it (see below)
+- `lib/utils.py` — `repo_full` is **authoritative** for repo identity; always use it (see below)
 - `lib/jira.py` — single `JIRA_RE` regex, `extract_jira_ids`
 
 ## Invariants (don't violate these)
@@ -90,7 +90,7 @@ Most of these are spelled out in detail in [CONTEXT.md](CONTEXT.md). Highlights:
 
 - **Portability is non-negotiable.** No hardcoded paths, usernames, orgs, or environment assumptions. Every default must be runtime-derivable (`Path.home()`, `gh api user`, `git remote get-url`, `datetime.now().astimezone().tzinfo`). When in doubt, ask before guessing.
 - **Stdlib only.** No pip deps. Tooling deps limited to `python3`, `gh`, and optionally the Atlassian MCP (must degrade gracefully if absent). Don't pull in `jq`, `rg`, `jsonschema`, LLM libraries, etc.
-- **Repo identity comes from `git remote`, not directory names.** Always call `lib.utils.repo_name(cwd)`. Path-segment tricks break on monorepos.
+- **Repo identity comes from `git remote`, not directory names.** Always call `lib.utils.repo_full(cwd)`. Path-segment tricks break on monorepos.
 - **The script never calls an LLM.** Richer categorization / Jira enrichment is delegated to the calling agent via the `--rerender` post-pass pattern. Don't embed multi-line Python in `SKILL.md` — `validate_bash.py` will force a user prompt for any `python3` invocation other than the bundled `generate.py`, and inline blobs can't be linted or tested.
 - **Window in local TZ, output in UTC.** Don't leak local TZ into `report.json`.
 - **Keep correlation `reasons` populated and preserve the score-inequality invariants** called out in [CONTEXT.md](CONTEXT.md) (ask > exploration, etc.). Uncorrelated sessions stay in the report.

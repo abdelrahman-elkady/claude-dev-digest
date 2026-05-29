@@ -1,3 +1,6 @@
+status: implemented
+---
+
 # Unify the gap cap across all kinds (v2.0.0)
 
 ## Context

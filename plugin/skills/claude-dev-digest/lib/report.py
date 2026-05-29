@@ -100,7 +100,7 @@ def _prs_by_day(prs: list[dict], reviewed_prs: list[dict]) -> dict:
             continue
         by_day.setdefault(day, []).append(
             {
-                "repo": p.get("repoShort"),
+                "repo": p.get("repo"),
                 "number": p.get("number"),
                 "title": p.get("title"),
                 "kind": p.get("kind"),
@@ -158,11 +158,11 @@ def _compute_totals(
     by_repo: dict[str, int] = {}
     for session in sessions:
         by_category[session["category"]] = by_category.get(session["category"], 0) + 1
-        by_repo[session["repoShort"] or "unknown"] = by_repo.get(session["repoShort"] or "unknown", 0) + 1
+        by_repo[session["repo"] or "unknown"] = by_repo.get(session["repo"] or "unknown", 0) + 1
 
     pr_by_repo: dict[str, int] = {}
     for p in prs:
-        pr_by_repo[p["repoShort"]] = pr_by_repo.get(p["repoShort"], 0) + 1
+        pr_by_repo[p["repo"]] = pr_by_repo.get(p["repo"], 0) + 1
 
     totals: dict = {
         "sessions": len(sessions),
@@ -172,11 +172,11 @@ def _compute_totals(
         "sessionsByRepo": by_repo,
         "prsByRepo": pr_by_repo,
         "uncorrelatedSessions": sum(1 for session in sessions if not session.get("correlatedPRs")),
-        "minutesByRepo": _sum_minutes(sessions, group_key="repoShort", duration_key="durationMin", default_group="unknown"),
+        "minutesByRepo": _sum_minutes(sessions, group_key="repo", duration_key="durationMin", default_group="unknown"),
         "categoryMinutes": _sum_minutes(sessions, group_key="category", duration_key="durationMin"),
-        "activeMinutesByRepo": _sum_minutes(sessions, group_key="repoShort", duration_key="activeDurationMin", default_group="unknown"),
+        "activeMinutesByRepo": _sum_minutes(sessions, group_key="repo", duration_key="activeDurationMin", default_group="unknown"),
         "activeCategoryMinutes": _sum_minutes(sessions, group_key="category", duration_key="activeDurationMin"),
-        "idleMinutesByRepo": _sum_minutes(sessions, group_key="repoShort", duration_key="idleMinutes", default_group="unknown"),
+        "idleMinutesByRepo": _sum_minutes(sessions, group_key="repo", duration_key="idleMinutes", default_group="unknown"),
         "idleCategoryMinutes": _sum_minutes(sessions, group_key="category", duration_key="idleMinutes"),
     }
     if window_start and window_end:
@@ -299,7 +299,7 @@ def _render_pr_section(lines: list[str], heading: str, prs: list[dict], *, show_
     lines.append(f"## {heading}")
     by_repo: dict[str, list[dict]] = {}
     for p in prs:
-        by_repo.setdefault(p["repoShort"], []).append(p)
+        by_repo.setdefault(p["repo"], []).append(p)
     for repo, group in sorted(by_repo.items()):
         lines.append(f"### {repo}")
         for p in sorted(group, key=lambda x: x["mergedAt"], reverse=True):
@@ -362,7 +362,7 @@ def write_markdown(report: dict, path: Path) -> None:
         if session.get("jiraIds"):
             jira_part = "  jira: " + " ".join(f"`{j}`" for j in session["jiraIds"])
         lines.append(
-            f"### [{cat}] {session['repoShort']} · {session['createdAt'][:16].replace('T', ' ')}"
+            f"### [{cat}] {session['repo']} · {session['createdAt'][:16].replace('T', ' ')}"
         )
         lines.append(f"- session: `{session['sessionId']}`{prs_part}")
         lines.append(

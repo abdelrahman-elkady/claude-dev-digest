@@ -12,6 +12,69 @@ Consumers of `report.json` should review this when updating.
 
 _(nothing yet)_
 
+## 3.0.0
+
+### ⚠️ Changed — canonical repo identity (loud callout, **breaking**)
+
+**Every repo key in `report.json` changes shape and re-keys on re-run.**
+Repo identity is now derived consistently from `git remote`, and the two
+`session` repo fields swap meaning. Pre-v3.0.0 reports keyed repos on bare
+names (and, for `repoShort`, on a fragile path slice); v3.0.0 keys them on the
+full `owner/repo`. Downstream consumers that group, join, or label by repo must
+migrate in lockstep.
+
+**Before (v2.0.0):**
+
+- `session.repo` was the bare repo name (e.g. `claude-dev-digest`).
+- `session.repoShort` was a 1–2 segment slice of the cwd path. This was
+  **wrong whenever Claude was launched from a subdirectory** — the slice
+  captured the subdirectory name, not the repo.
+- Correlation joined on the bare name (`session.repo == pr.repoShort`), so two
+  repos sharing a leaf name in different orgs cross-matched, and
+  subdirectory-launched sessions failed to correlate.
+
+**After (v3.0.0):**
+
+- `session.repo` is the full `owner/repo` from `git remote` (e.g.
+  `abdelrahman-elkady/claude-dev-digest`).
+- `session.repoShort` is the bare repo name from `git remote` (e.g.
+  `claude-dev-digest`) — no longer a cwd path slice, so it is correct
+  regardless of which subdirectory Claude was launched from.
+- When no `git remote` is reachable, both fields fall back to
+  `local:<git-root-name>`, or `local:<last-cwd-segment>` when there is no git
+  root at all.
+
+### Changed (breaking)
+
+- **Correlation join key** — sessions now join PRs on
+  `session.repo == pr.repo` (full `owner/repo`, case-insensitive). It
+  previously joined on the bare name (`session.repo == pr.repoShort`).
+  Consequences: same-leaf-named repos in different orgs no longer cross-match,
+  and sessions launched from a subdirectory now correlate correctly.
+- **`session.repo` semantics** — now the full `owner/repo` (was the bare repo
+  name). See loud callout above.
+- **`session.repoShort` semantics** — now the bare repo name from `git remote`
+  (was a 1–2 segment slice of the cwd path, which was wrong for
+  subdirectory-launched sessions).
+- **`totals.sessionsByRepo`, `totals.minutesByRepo`,
+  `totals.activeMinutesByRepo`, `totals.idleMinutesByRepo`,
+  `totals.prsByRepo`** — now keyed on `owner/repo` (were keyed on the bare
+  name).
+- **`totals.prsByDay[*].repo`** — now holds `owner/repo` (was the bare name).
+- **Markdown output** — now displays the full `owner/repo` everywhere it
+  previously showed the bare name.
+
+### Migration
+
+- **Numbers re-key on re-run.** All per-repo aggregates change keys from the
+  bare name to `owner/repo`, so cached historical reports will not match.
+- **There is no `--rerender` backfill.** A v2.x `report.json` cannot be
+  re-keyed from its stored fields — the full `owner/repo` is not recoverable
+  without re-deriving it from `git remote`. A fresh `generate.py` run is
+  required (same posture as the v2.0.0 `activeDurationMin` change).
+- **The companion `weekly-report-visualizer` repo must migrate in lockstep** —
+  it groups and labels by repo and will mis-render against a v2.x schema.
+
 ## 2.0.0
 
 ### ⚠️ Changed — `activeDurationMin` formula (loud callout, **breaking**)
